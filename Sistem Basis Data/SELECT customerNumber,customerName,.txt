@@ -1,0 +1,91 @@
+SELECT customerNumber,customerName,city,country,checkNumber,paymentDate,amount
+FROM customers ,payments
+WHERE p.productLine=pl.productLine
+
+SELECT p.productCode,p.productName,p.productLine,pl.textDescription,p.productDescription,p.quantityInStock,p.buyPrice
+FROM products p ,productlines pl
+WHERE p.productLine=pl.productLine
+
+Buat trigger t_hitung_subTotal sehingga ketika data ditambahkan pada tabel orderdetails_gt80 maka subtotal akan terisi secara otomatis
+
+SELECT c.customerNumber, c.customerName, c.city, c.country, p.checkNumber, p.paymentDate, p.amount
+FROM customers c
+JOIN payments p ON c.customerNumber = p.customerNumber;
+
+SELECT o.orderNumber, o.orderDate, c.customerName, c.city, c.country, p.checkNumber, p.amount
+FROM orders o
+JOIN customers c ON o.customerNumber = c.customerNumber
+JOIN payments p ON c.customerNumber = p.customerNumber;
+
+SELECT cu.customerNumber, cu.customerName, cu.city
+FROM customers_usa cu
+JOIN (
+    SELECT customerNumber, MIN(amount) AS min_amount
+    FROM payments
+    GROUP BY customerNumber
+) AS min_payments ON cu.customerNumber = min_payments.customerNumber;
+
+
+CREATE VIEW vcustomerUSA AS
+SELECT customerName, phone, city, country
+FROM customers
+WHERE country = 'USA';
+
+CREATE INDEX idxcustomerNumber ON customers_usa (customerNumber);
+
+SELECT cu.city, SUM(p.amount) AS total_amount
+FROM customers_usa cu
+JOIN payments p ON cu.customerNumber = p.customerNumber
+GROUP BY cu.city;
+
+CREATE OR REPLACE FUNCTION fDecAmount(amount numeric, persen numeric)
+RETURNS numeric AS
+$$
+DECLARE
+    decreased_amount numeric;
+BEGIN
+    decreased_amount := amount - (amount * persen / 100);
+    RETURN decreased_amount;
+END;
+$$
+LANGUAGE plpgsql;
+
+CREATE TABLE payments_gt100 AS
+SELECT *
+FROM payments
+WHERE amount > 100000;
+
+CREATE OR REPLACE PROCEDURE sp_update_amount(jml_persen numeric)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    UPDATE payments_gt100
+    SET amount = amount - (amount * jml_persen / 100);
+END;
+$$;
+
+CREATE TABLE orderdetails_gt80 AS
+SELECT *
+FROM orderdetails
+WHERE quantityOrdered > 80;
+
+CREATE TABLE orderdetails_gt80 LIKE orderdetails;
+INSERT INTO orderdetails_gt80
+SELECT *
+FROM orderdetails
+WHERE quantityOrdered > 80;
+
+CREATE OR REPLACE FUNCTION update_subTotal()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.subtotal := NEW.quantityOrdered * NEW.priceEach;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER t_update_subTotal
+BEFORE UPDATE OF quantityOrdered, priceEach
+ON orderdetails_gt80
+FOR EACH ROW
+EXECUTE FUNCTION update_subTotal();
+
